@@ -316,6 +316,10 @@ def _select_intervals(x, window, t_start, t_min, t_onset, t_offset, sleep, rest,
             sleep[0,0] = t_start[0]
     if len(t_min) and len(t_onset):
         t_min[0] = int((t_start[0] + t_onset[0]) // 2)
+    # Night minimum must lie inside its night; otherwise use the night midpoint
+    if len(t_min) == len(t_start) == len(t_onset) and len(t_min):
+        outside = (t_min < t_start) | (t_min > t_onset)
+        t_min[outside] = (t_start[outside] + t_onset[outside]) // 2
     return t_start, t_min, sleep, rest, is_closed
 
 
@@ -394,7 +398,7 @@ def _find_timestamps_and_scores(x, window=1440, level=0.5, nmin=30,
     sleep = np.zeros((len(idx))).astype(bool)
     for k in range(len(ext_onset)):
         mask = (idx[:,1] > ext_offset[k]) & (idx[:,0] < ext_onset[k])
-        mask = mask & ((idx[:,0]>ext_max[k]) | (idx[:,1]<ext_max[k+1]))
+        mask = mask & ((idx[:,0]>ext_max[k]) & (idx[:,1]<ext_max[k+1]))
         if np.sum(mask):
             t0, t1 = np.nan, np.nan
             for i in inumber[mask]:
@@ -414,9 +418,10 @@ def _find_timestamps_and_scores(x, window=1440, level=0.5, nmin=30,
     t_offset = np.asarray(t_offset, dtype=float)
     t_onset = np.asarray(t_onset, dtype=float)
     if loop and len(t_offset) and np.isnan(t_offset[-1]):
-        finite = t_offset[np.isfinite(t_offset)]
-        if len(finite):
-            t_offset[-1] = finite[-1] + window
+        # Periodic padding: reuse the offset of the same peak one loop period earlier
+        prev = np.isfinite(t_offset) & (np.abs(t_max - (t_max[-1] - x.size)) <= window // 2)
+        if np.any(prev):
+            t_offset[-1] = t_offset[prev][-1] + x.size
     # Nights without a qualifying sleep interval keep the peak-based onset / offset
     missing = np.isnan(t_onset)
     t_onset[missing] = peak_onset[missing]

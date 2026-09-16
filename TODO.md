@@ -158,6 +158,40 @@ Status as of 16 Sep 2026, after the resume session.
 - `intervalts._timestamps` now calls private `_timestamps_and_scores` (was
   accidentally calling the public decorated wrapper). Keep that.
 
+### NHANES loop-mode fixes (16 Sep 2026)
+
+Found by running all 7430 NHANES subjects with `loop=True`
+(`playground/nhanes_run.py`, config in `playground/config.json`; the
+playground folder is git-ignored). Regression tests in
+`tests/test_missing_nights.py` and `tests/test_landmark_order.py`.
+
+- [x] Nights without a qualifying sleep interval left NaN onset / offset,
+  cast to 0 or duplicated landmarks, and crashed two subjects. Now fall back
+  to the peak-based onset / offset.
+- [x] No selected days returned sleep spanning the whole padding. Now empty.
+- [x] Night intervals must lie between the two neighboring peaks (the mask
+  used OR). A long inactive stretch covering a peak, usually non-wear, was
+  used as the night both before and after it, putting wake-up after the peak
+  and bedtime before it. Such stretches are now labeled rest.
+- [x] Night minimum outside its night moves to the night midpoint.
+- [x] Missing last bedtime in loop mode is filled from the same peak one
+  loop period earlier, not one window later (one-valid-day loops missed
+  closure by 6 days). Longer padding did not help.
+
+NHANES after these fixes, prec=False: 0 crashes, 0 out-of-order days,
+0 zero-length days, 0 gaps between days, 0 unclosed loops; full-week subjects
+with 7 days unchanged (3744 of 4181). `prec=True` stays off by default: about
+2.8x slower and not more consistent.
+
+### Still open
+
+- 436 full-week subjects get a merged day longer than 36 h, mostly a quiet
+  day that forms no peak; enriched where the loop joins the recording's end
+  to its start. Lives in peak detection.
+- Inactive stretches longer than 24 h between peaks are still labeled sleep
+  (no non-wear detection).
+- No minimum-activity rule: near-empty weeks still return a day.
+
 ---
 
 ## Issues from the recap (all the crashers were fixed)
