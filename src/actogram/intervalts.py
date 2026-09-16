@@ -289,7 +289,8 @@ def _select_intervals(x, window, t_start, t_min, t_onset, t_offset, sleep, rest,
 
     """
     if len(t_start) == 0 or len(t_offset) == 0:
-        return t_start, t_min, sleep, rest, False
+        # No selected days: drop intervals, they would span the whole padding
+        return t_start, t_min, sleep[:0], rest[:0], False
     delta = window // 24
     is_closed = loop & (abs(t_start[0] + x.size - t_offset[-1]) <= delta)
     # Select sleep intervals
@@ -385,6 +386,9 @@ def _find_timestamps_and_scores(x, window=1440, level=0.5, nmin=30,
     ext_max = np.concatenate([(-1,), t_max, (len(x_),)])
     ext_onset = np.concatenate([t_onset, (len(x_) - 1,)])
     ext_offset = np.concatenate([(0,), t_offset])
+    # Keep peak-based onset / offset as fallback for nights without sleep intervals
+    peak_onset = np.asarray(t_onset, dtype=float)
+    peak_offset = np.asarray(t_offset, dtype=float)
     t_onset = np.zeros((len(t_onset))) * np.nan
     t_offset = np.zeros((len(t_offset))) * np.nan
     sleep = np.zeros((len(idx))).astype(bool)
@@ -413,6 +417,12 @@ def _find_timestamps_and_scores(x, window=1440, level=0.5, nmin=30,
         finite = t_offset[np.isfinite(t_offset)]
         if len(finite):
             t_offset[-1] = finite[-1] + window
+    # Nights without a qualifying sleep interval keep the peak-based onset / offset
+    missing = np.isnan(t_onset)
+    t_onset[missing] = peak_onset[missing]
+    missing = np.isnan(t_offset)
+    t_offset[missing] = peak_offset[missing]
+    t_onset, t_offset = t_onset.astype(int), t_offset.astype(int)
     # Select timestamps by optimal overlap with original data array
     t_start, t_min, t_onset, t_max, t_offset = peakts._select_timestamps(x, 
         t_min, t_onset, t_max, t_offset, window, loop, npad)
